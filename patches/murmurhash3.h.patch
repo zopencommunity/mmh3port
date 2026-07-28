@@ -1,0 +1,21 @@
+--- a/src/mmh3/murmurhash3.h
++++ b/src/mmh3/murmurhash3.h
+@@ -24,8 +24,18 @@
+ #include <Python.h>
+ 
+ #if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
++#if defined(__MVS__)
++#include <stdint.h>
++#ifndef bswap_32
++#define bswap_32(x) __builtin_bswap32(x)
++#endif
++#ifndef bswap_64
++#define bswap_64(x) __builtin_bswap64(x)
++#endif
++#else
+ #include <byteswap.h>
+ #endif
++#endif
+ 
+ //-----------------------------------------------------------------------------
+ // Platform-specific functions and macros
