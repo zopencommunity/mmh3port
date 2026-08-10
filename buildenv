@@ -122,10 +122,12 @@ zopen_pre_make() {
 }
 
 
-# Auto-generated: activate venv before check
+# Runs once, before any interpreter is tested, so it must not assume or leave
+# behind a particular Python: activating .venv here pinned everything that
+# followed to the primary interpreter, and it was never deactivated.
+# zopen_python_test below gets the right environment from zopen-build instead.
 zopen_pre_check() {
     sed -i "1s|^python |python3 |;1s|^python$|python3|" .appenv 2>/dev/null || true
-    . .venv/bin/activate
     # Recreate tests/helper.py omitted from the PyPI sdist (needed by test suite)
     if [ -d tests ] && [ ! -f tests/helper.py ]; then
         cat > tests/helper.py <<'HELPEREOF'
@@ -137,47 +139,27 @@ def u64_to_s64(x):
     return x - 0x10000000000000000 if x >= 0x8000000000000000 else x
 HELPEREOF
     fi
-# Auto-generated: copy .so from site-packages to source (ZOPEN_C_EXT_SO_COPY_FIX)
-# When tests run from the source directory, Python finds the source
-# tree package instead of site-packages. Copying .so files into the
-# source tree ensures compiled modules are found.
-# NOTE: z/OS find does NOT support "-not -path" — must use -prune instead
-# NOTE: "./" covers the source-root cwd; "*/" covers the port-dir cwd.
-for _d in ./ */; do
-  if [ -f "${_d}setup.py" ] || [ -f "${_d}pyproject.toml" ]; then
-    for _sitepkg in "${_d}".venv/lib/python3*/site-packages; do
-      [ -d "${_sitepkg}" ] || continue
-      find "${_sitepkg}" -name "*.so" -type f 2>/dev/null | while IFS= read -r _so; do
-        _rel="${_so#${_sitepkg}/}"
-        _pkgpart="${_rel%%/*}"
-        _srcdir=$(find "${_d}" -name .venv -prune -o -name build -prune -o -name site-packages -prune -o -name .git -prune -o -type d -name "${_pkgpart}" -print 2>/dev/null | head -1)
-        if [ -n "${_srcdir}" ]; then
-          _subpath="${_rel#${_pkgpart}/}"
-          _dest="${_srcdir}/${_subpath}"
-          _destdir=$(dirname "${_dest}")
-          mkdir -p "${_destdir}" 2>/dev/null
-          cp -f "${_so}" "${_dest}" 2>/dev/null
-        fi
-      done
-    done
-  fi
-done
-
 }
 
-zopen_custom_check() {
-  . .venv/bin/activate
-  pip install pytest || return $?
-  pip install --force-reinstall --no-deps dist/*.whl || return $?
+# Run the tests for one interpreter. zopen-build calls this once per Python
+# version being built, with that version's virtual environment already active
+# and the wheel built for it already installed, so 'python' here is the right
+# interpreter and dist/ never has to be inspected.
+#
+# Running from a copy of tests/ outside the source tree is what makes the
+# installed wheel the thing under test: the source tree holds an mmh3 package
+# directory that would otherwise shadow it. That is also why no .so has to be
+# copied back into the source tree -- the import never resolves there.
+zopen_python_test() {
   test_dir="/tmp/${ZOPEN_PROJECT_NAME}_tests_$$"
+  rm -rf "${test_dir}"
   mkdir -p "${test_dir}" || return $?
   cp -R tests/* "${test_dir}/" || return $?
-  cd "${test_dir}" || return $?
-  python -m pytest -v
+
+  (cd "${test_dir}" && python -m pytest -v)
   zopen_check_result=$?
-  cd - > /dev/null
+
   rm -rf "${test_dir}"
-  deactivate
   return "${zopen_check_result}"
 }
 
@@ -194,4 +176,3 @@ zopen_check_results() {
   echo "expectedFailures:0"
 }
 
-export ZOPEN_CHECK="zopen_custom_check"
