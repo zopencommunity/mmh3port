@@ -35,7 +35,9 @@ export ZOPEN_BUILD_SYSTEM="Python"
 # zopen_check_results is provided natively by zopen-build for Python
 
 zopen_get_version() {
-  echo "1.0.0" # Modify to echo the version of your tool/library
+  # The version the port actually builds, not the generator's placeholder.
+  # Read from the variable above so there is one source of truth to bump.
+  echo "${SETUPTOOLS_SCM_PRETEND_VERSION_FOR_MMH3}"
 }
 
 
